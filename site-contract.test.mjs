@@ -2,18 +2,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const htmlPath = new URL("../dist/index.html", import.meta.url);
-const cssPath = new URL("../dist/styles.css", import.meta.url);
+const htmlPath = new URL("./index.html", import.meta.url);
+const cssPath = new URL("./styles.css", import.meta.url);
 const html = await readFile(htmlPath, "utf8").catch(() => "");
 const css = await readFile(cssPath, "utf8").catch(() => "");
-const hostingPath = new URL("../.openai/hosting.json", import.meta.url);
+const hostingPath = new URL("./.openai/hosting.json", import.meta.url);
 const hosting = JSON.parse(await readFile(hostingPath, "utf8"));
 const visibleText = (source) => source
   .replace(/<[^>]*>/g, "")
   .replaceAll("&amp;", "&")
   .replace(/\s+/g, " ")
   .trim();
-const appModule = await import("../dist/app.js");
+const appModule = await import("./app.js");
 
 const sectionIds = [
   "problems",
@@ -55,14 +55,19 @@ test("the published page exposes the approved identity and contact routes", () =
 test("the case-study rail preserves the approved brand sequence", () => {
   const brands = ["Onici", "Tài Đạt", "Lotus", "Vạn Hạnh Mall", "Hùng Vương", "LS2", "Osen Hotel"];
   const caseSection = html.slice(html.indexOf('id="case-studies"'));
-  const caseRail = caseSection.slice(caseSection.indexOf('<div class="case-grid">'));
+  const caseRail = caseSection.slice(caseSection.indexOf('<div class="case-grid case-grid--portfolio">'));
   const positions = brands.map((brand) => caseRail.indexOf(brand));
   assert.ok(positions.every((position) => position >= 0), "every approved brand must exist");
   assert.deepEqual(positions, [...positions].sort((a, b) => a - b));
+  assert.ok(caseRail.includes('class="case-grid case-grid--portfolio"'));
+  assert.equal((caseRail.match(/class="case-card"/g) ?? []).length, 7);
+  assert.equal((caseRail.match(/class="case-status"/g) ?? []).length, 7);
   assert.doesNotMatch(caseRail, /\+\d+%|\d+x ROI|doanh thu tăng/i);
+  assert.match(css, /\.case-grid--portfolio\s*\{[^}]*grid-template-columns:\s*repeat\(3,/);
+  assert.match(css, /@media\s*\(max-width:\s*640px\)[\s\S]*\.case-grid--portfolio\s*\{[^}]*grid-template-columns:\s*1fr/);
 });
 
-test("the case-study section spotlights three live client websites without unverified KPIs", () => {
+test("the case-study section spotlights six live client websites without unverified KPIs", () => {
   const caseSection = html.slice(html.indexOf('id="case-studies"'));
   const showcaseStart = caseSection.indexOf('class="website-showcase"');
   const portfolioStart = caseSection.indexOf('class="case-portfolio-heading"');
@@ -71,19 +76,24 @@ test("the case-study section spotlights three live client websites without unver
 
   assert.ok(showcaseStart >= 0, "the client website showcase must exist");
   assert.ok(showcaseStart < miniappStart && miniappStart < portfolioStart, "the website showcase must appear before the remaining case-study rail");
-  assert.equal((showcase.match(/class="website-card\b/g) ?? []).length, 3);
+  assert.equal((showcase.match(/class="website-card\b/g) ?? []).length, 6);
+  assert.ok(showcase.includes("Các website đang trực tiếp"));
+  assert.ok(!showcase.includes("Ba website đang trực tiếp"));
 
   for (const [brand, url] of [
     ["Osen Hotel", "https://www.osenhotel.com/"],
     ["Onici", "https://www.onici.vn/"],
     ["LS2 Việt Nam", "https://ls2.vn/"],
+    ["Nón Tài Đạt", "https://nontaidat.vn/"],
+    ["MARIA Family", "https://mariafamily.vn/"],
+    ["FIDÉ", "https://fide.vn/"],
   ]) {
     assert.ok(showcase.includes(brand), `missing website brand: ${brand}`);
     assert.ok(showcase.includes(`href="${url}"`), `missing live website link: ${url}`);
   }
 
-  assert.equal((showcase.match(/target="_blank" rel="noopener noreferrer"/g) ?? []).length, 3);
-  assert.equal((showcase.match(/Đang trực tiếp triển khai/g) ?? []).length, 3);
+  assert.equal((showcase.match(/target="_blank" rel="noopener noreferrer"/g) ?? []).length, 6);
+  assert.equal((showcase.match(/Đang trực tiếp triển khai/g) ?? []).length, 6);
   assert.doesNotMatch(showcase, /\+\d+%|\d+x ROI|doanh thu tăng|chuyển đổi tăng/i);
   assert.match(css, /\.website-grid\s*\{[^}]*display:\s*grid/);
   assert.match(css, /@media\s*\(max-width:\s*640px\)[\s\S]*\.website-grid\s*\{[^}]*grid-template-columns:\s*1fr/);
@@ -110,12 +120,13 @@ test("the companion showcase links the supplied Zalo Mini App poster to the Canv
 test("the ZBS remarketing stream follows the OA growth proof without exposing customer data", () => {
   const caseSection = html.slice(html.indexOf('id="case-studies"'));
   const oaStart = caseSection.indexOf('class="oa-growth-showcase"');
+  const workflowStart = caseSection.indexOf('id="workflow-showcase"');
   const zbsStart = caseSection.indexOf('id="zbs-message-showcase"');
   const websiteStart = caseSection.indexOf('class="website-showcase"');
   const zbsShowcase = caseSection.slice(zbsStart, websiteStart);
 
   assert.ok(zbsStart >= 0, "the ZBS message showcase must exist");
-  assert.ok(oaStart < zbsStart && zbsStart < websiteStart, "the ZBS stream must sit between OA growth and client websites");
+  assert.ok(oaStart < workflowStart && workflowStart < zbsStart && zbsStart < websiteStart, "workflow and ZBS proof must follow the OA growth showcase");
   assert.ok(visibleText(zbsShowcase).includes("Hàng trăm mẫu tin đã được gửi đi."));
   assert.equal((zbsShowcase.match(/class="zbs-track zbs-track--/g) ?? []).length, 2);
   assert.ok((zbsShowcase.match(/class="zbs-message-card\b/g) ?? []).length >= 12);
@@ -123,6 +134,39 @@ test("the ZBS remarketing stream follows the OA growth proof without exposing cu
   assert.match(css, /@keyframes\s+zbs-marquee-forward/);
   assert.match(css, /@keyframes\s+zbs-marquee-reverse/);
   assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*\.zbs-track\s*\{[^}]*animation:\s*none/);
+});
+
+test("the case study section visualizes five end-to-end operating workflows", () => {
+  const caseSection = html.slice(html.indexOf('id="case-studies"'));
+  const workflowStart = caseSection.indexOf('id="workflow-showcase"');
+  const zbsStart = caseSection.indexOf('id="zbs-message-showcase"');
+  const workflow = caseSection.slice(workflowStart, zbsStart);
+  const workflowText = visibleText(workflow);
+
+  assert.ok(workflowStart >= 0, "the operating workflow showcase must exist");
+  assert.equal((workflow.match(/class="workflow-card"/g) ?? []).length, 5);
+  assert.equal((workflow.match(/class="workflow-steps"/g) ?? []).length, 5);
+  for (const phrase of [
+    "Phát sinh đơn",
+    "Nhận hàng",
+    "Sau 2 ngày",
+    "Nhận tin đánh giá",
+    "Thông báo bảo hành",
+    "Hướng dẫn bảo quản",
+    "Giới thiệu sản phẩm chéo",
+    "Tích điểm",
+    "Tặng voucher định kỳ",
+    "Kiểm tra sử dụng voucher",
+    "Nhắc dùng voucher",
+    "Thông báo quyền lợi mua hàng",
+    "Nhắc dùng quyền lợi",
+    "Giá trị đơn trên X triệu",
+    "Tặng thẻ mua hàng đặc quyền",
+  ]) {
+    assert.ok(workflowText.includes(phrase), `missing workflow step: ${phrase}`);
+  }
+  assert.match(css, /\.workflow-steps\s*\{[^}]*display:\s*grid/);
+  assert.match(css, /@media\s*\(max-width:\s*980px\)[\s\S]*\.workflow-steps\s*\{[^}]*grid-template-columns:\s*1fr/);
 });
 
 test("the Zalo OA proof grid publishes all eight verified audience snapshots", () => {
@@ -283,7 +327,7 @@ test("the experience proof covers the approved industry portfolio", () => {
   }
 });
 
-test("the experience proof presents seven accessible client brand logos", () => {
+test("the experience proof presents nine accessible client brand logos", () => {
   const experienceSection = html.slice(
     html.indexOf('id="experience"'),
     html.indexOf('id="tools"'),
@@ -298,6 +342,8 @@ test("the experience proof presents seven accessible client brand logos", () => 
     "Lotus Group",
     "Hùng Vương Plaza",
     "Vạn Hạnh Mall",
+    "MARIA Family",
+    "FIDÉ",
   ]) {
     assert.ok(experienceSection.includes(`alt="Logo ${brand}"`), `missing accessible brand logo: ${brand}`);
   }
@@ -322,9 +368,35 @@ test("the tool ecosystem exposes meaningful brand logos", () => {
     "Zalo OA",
     "CNV CDP",
     "Microsoft Excel",
+    "Shopify",
+    "1Office",
+    "Telegram",
   ]) {
     assert.ok(toolsSection.includes(`alt="Logo ${logo}"`), `missing accessible logo: ${logo}`);
   }
+});
+
+test("the tool ecosystem presents six implemented system combinations", () => {
+  const toolsSection = html.slice(
+    html.indexOf('id="tools"'),
+    html.indexOf('id="capabilities"'),
+  );
+  const toolText = visibleText(toolsSection);
+
+  assert.ok(toolsSection.includes('class="integration-showcase"'));
+  assert.equal((toolsSection.match(/class="integration-card\b/g) ?? []).length, 6);
+  for (const combination of [
+    "CNV CDP × KiotViet",
+    "CNV CDP × Haravan",
+    "CNV CDP × Shopify",
+    "CNV CDP × Sapo",
+    "CNV CDP × Haravan × Telegram",
+    "CRM × Google Sheets",
+  ]) {
+    assert.ok(toolText.includes(combination), `missing implemented combination: ${combination}`);
+  }
+  assert.match(css, /\.integration-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,/);
+  assert.match(css, /@media\s*\(max-width:\s*640px\)[\s\S]*\.integration-grid\s*\{[^}]*grid-template-columns:\s*1fr/);
 });
 
 test("the capability system contains six approved disciplines and the operating trio", () => {
@@ -370,14 +442,22 @@ test("the CDP and omnichannel panels link to their dedicated solution pages", ()
   );
 
   assert.ok(cdpPanel.includes('href="https://cg.cnvwork.com/files/nhan/solution/agentic-cdp-360.html"'));
-  assert.ok(cdpPanel.includes("Khám phá giải pháp Agentic CDP 360"));
+  assert.ok(cdpPanel.includes("Agentic CDP 360 có thể mở khóa tăng trưởng như thế nào?"));
   assert.ok(omnichannelPanel.includes('href="https://cg.cnvwork.com/files/nhan/solution/cnvcdp-owned-platform.html#top"'));
-  assert.ok(omnichannelPanel.includes("Khám phá giải pháp Owned Platform"));
+  assert.ok(omnichannelPanel.includes("Owned Platform biến mỗi điểm chạm thành tài sản tăng trưởng"));
 
   for (const panel of [cdpPanel, omnichannelPanel]) {
     assert.ok(panel.includes('class="solution-cta"'));
     assert.ok(panel.includes('target="_blank" rel="noopener noreferrer"'));
+    assert.ok(panel.includes('class="solution-cta-badge"'));
+    assert.ok(panel.includes("KHÁM PHÁ BẢN GIẢI PHÁP THỰC TẾ"));
+    assert.ok(panel.includes('class="solution-cta-hint"'));
+    assert.ok(panel.includes("MỞ NGAY"));
   }
+
+  assert.match(css, /\.solution-cta:focus-visible\s*\{/);
+  assert.match(css, /\.solution-cta::after\s*\{/);
+  assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*\.solution-cta::after\s*\{/);
 });
 
 test("the page presents verified experience without unverified outcome claims", () => {
